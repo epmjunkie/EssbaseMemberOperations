@@ -1,4 +1,5 @@
 import sys
+from enum import Enum
 
 sys.path.append('lib/ess_es_server.jar')
 sys.path.append('lib/ess_japi.jar')
@@ -7,7 +8,7 @@ from com.essbase.api.session import IEssbase
 from com.essbase.api.datasource import IEssCube
 
 
-class essbase(object):
+class Essbase(object):
     def __init__(self, username=None, password=None, provider='Embedded', server=None, version="11.1.2.4",
                  application=None,
                  database=None):
@@ -72,24 +73,8 @@ class essbase(object):
             return True
         return False
 
-    def test(self):
-        conn = essbase(username='automation', password='Hyperion1', server='brtuxhypap03d.phillips66.net')
-        conn.open()
-        if conn.connected():
-            print("Connected to Essbase")
-        else:
-            print("Failed to connect to Essbase")
-        conn.close()
 
-
-class outline(object):
-
-    class Operation(object):
-        Member = 1
-        Descendants = 2
-        IDescendants = 3
-        Shared = 4
-        Level0 = 0
+class Outline(object):
 
     def __init__(self, essbase, application, database):
         self.connection = essbase
@@ -119,56 +104,63 @@ class outline(object):
         self.otl.save()
         self.otl.restructureCube(IEssCube.EEssRestructureOption.KEEP_ALL_DATA)
 
-    def delete(self, member, operation=None):
-        member = Member(member, self.otl)
-        if operation == self.Operation.Member:
-            if member.count > 0:
-                return False, "Member: %(member)s is not level zero, please choose an appropriate action." % {'member': member}
-            member.delete()
-            return True, "Member: %(member)s has been deleted." % {'member': member}
-        elif operation == self.Operation.Descendants:
-            if member.count == 0:
-                return False, "Member: %(member)s is level zero, please choose an appropriate action." % {'member': member}
-            for child in member.children:
-                child.delete()
-            return True, "Children of member: %(member)s have been deleted." % {'member': member}
-        elif operation == self.Operation.IDescendants:
-            if member.count > 0:
-                for child in member.children:
-                    child.delete()
-            member.delete()
-            return True, "Member: %(member)s and its children have been deleted." % {'member': member}
-        elif operation == self.Operation.Level0:
-            if member.count == 0:
-                member.delete()
-                return True, "Member: %(member)s is level 0 and has been deleted." % {'member': member}
-            else:
-                for child in member.children:
-                    if child.isLevel0:
-                        child.delete()
-                    else:
-                        self.delete(child, operation)
-                return True, "Level 0 children of the member: %(member)s have been deleted." % {'member': member}
-        elif operation == self.Operation.Shared:
-            if member.count == 0:
-                return False, "Member has no shared children;"
-            else:
-                for child in member.children:
-                    if child.isShared:
-                        child.delete()
-                    else:
-                        self.delete(child, operation)
-        return False, "Unknown operation"
-
 
 class Member(object):
-    def __init__(self, name, outline):
-        self.name = str(name)
+    def __init__(self, outline, name=None, member=None):
         self.outline = outline
-        self.member = outline.findMember(self.name)
+        if member:
+            self.member = member
+            self.name = member.toString()
+        else:
+            self.name = str(name)
+            self.member = self.outline.otl.findMember(self.name)
 
-    def delete(self):
+    def delete1(self):
         self.member.delete()
+
+    def delete(self, operation):
+        if operation == Operation.Member:
+            if self.count > 0:
+                return False, "Member: %(member)s is not level zero, please choose an appropriate action." % {
+                    'member': self.name}
+            else:
+                self.member.delete()
+            return True, "Member: %(member)s has been deleted." % {'member': self.name}
+        elif operation == Operation.Descendants:
+            if self.count == 0:
+                return False, "Member: %(member)s is level zero, please choose an appropriate action." % {
+                    'member': self.name}
+            for child in self.children:
+                child.delete(Operation.IDescendants)
+            return True, "Children of member: %(member)s have been deleted." % {'member': self.name}
+        elif operation == Operation.IDescendants:
+            for child in self.children:
+                child.delete(operation)
+            self.member.delete()
+            return True, "Member: %(member)s and its children have been deleted." % {'member': self.name}
+        elif operation == Operation.Level0:
+            if self.isLevel0:
+                self.member.delete()
+                return True, "Member: %(member)s is level 0 and has been deleted." % {'member': self.name}
+            else:
+                for child in self.children:
+                    child.delete(operation)
+            return True, "Level 0 children of the member: %(member)s have been deleted." % {'member': self.name}
+        elif operation == Operation.Shared:
+            if self.count == 0:
+                return False, "Member: %(member)s has no shared children;" % {'member': self.name}
+            else:
+                for child in self.children:
+                    if child.isShared:
+                        child.delete(Operation.Member)
+                    else:
+                        child.delete(operation)
+            return True, "Shared children the member: %(member)s have been deleted." % {'member': self.name}
+        return False, "Member: %(member)s Unknown Operation." % {'member': self.name}
+
+    def rename(self, name):
+        self.member.rename(name)
+        self.name = name
 
     @property
     def count(self):
@@ -180,16 +172,23 @@ class Member(object):
 
     @property
     def isShared(self):
-        return self.member.getSharedOption().lower() == 'shared member'
+        return self.member.shareOption.toString() == "Shared member"
 
     @property
     def children(self):
         child = []
         children = self.member.getChildMembers()
         for i in range(0, children.getCount()):
-            child.append(Member(name=children.getAt(i).toString(), outline=self.outline))
+            child.append(Member(member=children.getAt(i), outline=self.outline))
         return child
 
     def __str__(self):
         return self.name
 
+
+class Operation(Enum):
+    Member = 1
+    Descendants = 2
+    IDescendants = 3
+    Shared = 4
+    Level0 = 0
