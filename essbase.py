@@ -6,6 +6,7 @@ sys.path.append('lib/ess_japi.jar')
 sys.path.append('lib/ojdl.jar')
 from com.essbase.api.session import IEssbase
 from com.essbase.api.datasource import IEssCube
+from com.essbase.api.metadata.IEssMember import EEssShareOption
 
 
 class Essbase(object):
@@ -75,11 +76,14 @@ class Essbase(object):
 
 
 class Outline(object):
-
-    def __init__(self, essbase, application, database):
-        self.connection = essbase
+    def __init__(self, essbase, application=None, database=None):
         self.application = application
         self.database = database
+        self.connection = essbase
+        if not application and essbase.application:
+            self.application = essbase.application
+        if not database and essbase.database:
+            self.database = essbase.database
         self.otl = None
         self.haschanges = False
 
@@ -98,8 +102,8 @@ class Outline(object):
             self.save()
         self.otl.close()
 
-    def save(self):
-        if self.haschanges:
+    def save(self, verify=False):
+        if self.haschanges and verify:
             self.otl.verify(True)
         self.otl.save()
         self.otl.restructureCube(IEssCube.EEssRestructureOption.KEEP_ALL_DATA)
@@ -115,9 +119,6 @@ class Member(object):
             self.name = str(name)
             self.member = self.outline.otl.findMember(self.name)
 
-    def delete1(self):
-        self.member.delete()
-
     def delete(self, operation):
         if operation == Operation.Member:
             if self.count > 0:
@@ -125,6 +126,7 @@ class Member(object):
                     'member': self.name}
             else:
                 self.member.delete()
+            self.outline.haschanges = True
             return True, "Member: %(member)s has been deleted." % {'member': self.name}
         elif operation == Operation.Descendants:
             if self.count == 0:
@@ -132,11 +134,13 @@ class Member(object):
                     'member': self.name}
             for child in self.children:
                 child.delete(Operation.IDescendants)
+            self.outline.haschanges = True
             return True, "Children of member: %(member)s have been deleted." % {'member': self.name}
         elif operation == Operation.IDescendants:
             for child in self.children:
                 child.delete(operation)
             self.member.delete()
+            self.outline.haschanges = True
             return True, "Member: %(member)s and its children have been deleted." % {'member': self.name}
         elif operation == Operation.Level0:
             if self.isLevel0:
@@ -145,6 +149,7 @@ class Member(object):
             else:
                 for child in self.children:
                     child.delete(operation)
+            self.outline.haschanges = True
             return True, "Level 0 children of the member: %(member)s have been deleted." % {'member': self.name}
         elif operation == Operation.Shared:
             if self.count == 0:
@@ -155,12 +160,59 @@ class Member(object):
                         child.delete(Operation.Member)
                     else:
                         child.delete(operation)
+            self.outline.haschanges = True
             return True, "Shared children the member: %(member)s have been deleted." % {'member': self.name}
         return False, "Member: %(member)s Unknown Operation." % {'member': self.name}
 
     def rename(self, name):
         self.member.rename(name)
         self.name = name
+        self.outline.haschanges = True
+
+    @property
+    def storage(self):
+        if self.member.shareOption == EEssShareOption.STORE_DATA:
+            return 'Store Data'
+        elif self.member.shareOption == EEssShareOption.NEVER_SHARE:
+            return 'Never Share'
+        elif self.member.shareOption == EEssShareOption.LABEL_ONLY:
+            return 'Label Only'
+        elif self.member.shareOption == EEssShareOption.SHARED_MEMBER:
+            return 'Shared Member'
+        elif self.member.shareOption == EEssShareOption.DYNAMIC_CALC_AND_STORE:
+            return 'Dynamic Calc and Store'
+        elif self.member.shareOption == EEssShareOption.DYNAMIC_CALC:
+            return 'Dynamic Calc'
+
+    @storage.setter
+    def storage(self, value):
+        if isinstance(value, DataStorage):
+            if value == DataStorage.Stored:
+                self.member.shareOption = EEssShareOption.STORE_DATA
+            elif value == DataStorage.NeverShare:
+                self.member.shareOption = EEssShareOption.NEVER_SHARE
+            elif value == DataStorage.LabelOnly:
+                self.member.shareOption = EEssShareOption.LABEL_ONLY
+            elif value == DataStorage.SharedMember:
+                self.member.shareOption = EEssShareOption.SHARED_MEMBER
+            elif value == DataStorage.DynamicCalcAndStore:
+                self.member.shareOption = EEssShareOption.DYNAMIC_CALC_AND_STORE
+            elif value == DataStorage.DynamicCalc:
+                self.member.shareOption = EEssShareOption.DYNAMIC_CALC
+        else:
+            if value.lower() == 'store data':
+                self.member.shareOption = EEssShareOption.STORE_DATA
+            elif value.lower() == 'never share':
+                self.member.shareOption = EEssShareOption.NEVER_SHARE
+            elif value.lower() == 'label only':
+                self.member.shareOption = EEssShareOption.LABEL_ONLY
+            elif value.lower() == 'shared member':
+                self.member.shareOption = EEssShareOption.SHARED_MEMBER
+            elif value.lower() == 'dynamic calc and store':
+                self.member.shareOption = EEssShareOption.DYNAMIC_CALC_AND_STORE
+            elif value.lower() == 'dynamic calc':
+                self.member.shareOption = EEssShareOption.DYNAMIC_CALC
+        self.outline.haschanges = True
 
     @property
     def count(self):
@@ -172,7 +224,7 @@ class Member(object):
 
     @property
     def isShared(self):
-        return self.member.shareOption.toString() == "Shared member"
+        return self.member.shareOption == EEssShareOption.SHARED_MEMBER
 
     @property
     def children(self):
@@ -192,3 +244,12 @@ class Operation(Enum):
     IDescendants = 3
     Shared = 4
     Level0 = 0
+
+
+class DataStorage(Enum):
+    Stored = 0  # EEssShareOption.STORE_DATA
+    NeverShare = 1  # EEssShareOption.NEVER_SHARE
+    LabelOnly = 2  # EEssShareOption.LABEL_ONLY
+    SharedMember = 3  # EEssShareOption.SHARED_MEMBER
+    DynamicCalcAndStore = 4  # EEssShareOption.DYNAMIC_CALC_AND_STORE
+    DynamicCalc = 5  # EEssShareOption.DYNAMIC_CALC
