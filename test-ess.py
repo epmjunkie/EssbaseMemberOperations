@@ -11,10 +11,22 @@ otl = Outline(essbase=conn)
 conn.open()
 otl.open()
 # member = Member(name='ROCE Measures', outline=otl).delete(Operation.Shared)
-member = Member(name='CROCE Measures1', outline=otl)
+member = Member(name='CROCE Measures', outline=otl)
 member.storage = DataStorage.Stored
 print(member.storage)
 print(member.name)
 otl.save()
 otl.close()
 conn.close()
+
+
+def appendCount(file, start=0):
+    f = open(file, "r+")
+    lines = f.readlines()
+    f.seek(0)
+    i = start
+    for line in lines:
+        i += 1
+        f.write(line.replace('\n', '') + '|' + str(i) + '\n')
+    f.close()
+    return i
