@@ -10,12 +10,13 @@ conn = Essbase(username=settings.username, password=settings.password, server=se
 otl = Outline(essbase=conn)
 conn.open()
 otl.open()
+otl.xmlexport("outline-export1.xml", dimensions=["Measure", "Organization"])
 # member = Member(name='ROCE Measures', outline=otl).delete(Operation.Shared)
-member = Member(name='CROCE Measures', outline=otl)
-member.storage = DataStorage.Stored
-print(member.storage)
-print(member.name)
-otl.save()
+# member = Member(name='CROCE Measures', outline=otl)
+# member.storage = DataStorage.Stored
+# print(member.storage)
+# print(member.name)
+# otl.save()
 otl.close()
 conn.close()
 

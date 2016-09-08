@@ -6,6 +6,7 @@ sys.path.append('lib/ess_japi.jar')
 sys.path.append('lib/ojdl.jar')
 from com.essbase.api.session import IEssbase
 from com.essbase.api.datasource import IEssCube
+from com.essbase.api.datasource import EssOtlExportOptions
 from com.essbase.api.metadata.IEssMember import EEssShareOption
 
 
@@ -107,6 +108,21 @@ class Outline(object):
             self.otl.verify(True)
         self.otl.save()
         self.otl.restructureCube(IEssCube.EEssRestructureOption.KEEP_ALL_DATA)
+
+    def xmlexport(self, filepath, dimensions=[], application=None, database=None):
+        if application:
+            self.application = application
+        if database:
+            self.database = database
+        options = EssOtlExportOptions()
+        if len(dimensions) > 0:
+            options.setDimList(dimensions)
+            options.setOutputFlag(1)
+        else:
+            options.setOutputFlag(0)
+        app = self.connection.getApp(self.application)
+        cube = app.getCube(self.database)
+        cube.exportOutline(options, filepath)
 
 
 class Member(object):
@@ -253,3 +269,10 @@ class DataStorage(Enum):
     SharedMember = 3  # EEssShareOption.SHARED_MEMBER
     DynamicCalcAndStore = 4  # EEssShareOption.DYNAMIC_CALC_AND_STORE
     DynamicCalc = 5  # EEssShareOption.DYNAMIC_CALC
+
+
+class item(object):
+    def __init__(self, parent, child, uda):
+        self.parent = parent
+        self.child = child
+        self.uda = uda
